@@ -134,13 +134,13 @@ Promise.all([d3.json ("https://raw.githubusercontent.com/ivangp21/herramientas/m
                 .append("svg")                                                      // Añadimos una imágen SVG al DIV Del Gráfico 2 (Provincias)     
                 .attr('width', width2 + margin2.left + margin2.right)               // Ajustamos los márgenes
                 .attr('height', height2 + margin2.top + margin2.bottom)
-    
+
     // EJE Y: Creamos el eje Y para utilizar posteriormente
     var gEjeY = svgProvincias
                 .append("g")                                                        // Añadimos un elemento grupal
                 .attr('class', 'y axis')                                            // Asignamos la clase Y Axis
                 .attr("transform",`translate(${margin2.left}, 0)`)                  // Y lo ajustamos dejando  margen para que quepan los textos
-    
+
     // EJE X: Creamos el eje X para utilizar posteriormente
     var gEjeX = svgProvincias
                 .append('g')                                                        // Añadimos un elemento grupal
@@ -156,16 +156,113 @@ Promise.all([d3.json ("https://raw.githubusercontent.com/ivangp21/herramientas/m
     //          en formato gráfico de barras.
     //      Puesto que cada comunidad tiene un número distintos de provincias y un rango de valores distinto se deben
     //          cargar de cada vez unos nuevos ejes X e Y.
-    function pintarGrafica2(pfiltro) {               
+    function pintarGrafica2(pfiltro) {  
+        
+            // DATOS: Cargamos los datos correspondientes a las provincias asociadas a la comunidad seleccionada        
+            //---------------------------------------------------------
+            var datosprovinciasfiltrado = datosprovincias.filter(x => x.Comunidad === pfiltro)  
+        
+            
+            // NOTA: con este código se puede simplificar la gestión de "repintar". Basta descomentar y meter la definición del SVG y los ejes dentro de la función.
+            //---------------------------------------------------------
+            // Borramos la gráfica anterior
+            //const svg = d3.select("div#grafico2");
+            //svg.selectAll("*").remove();
+            
+            
+            // DETECCIÓN DE NEGATIVOS (POR SI DEBE HABER SECCIÓN INFERIOR)
+            //---------------------------------------------------------
+            // TODO: Cambiar esto por un min(0, d3.min(data))
+            // Creamos una variable para almacenar el valor mínimo de la escala Y
+            var minimoY = 0;
+        
+            // Comprobamos si hay valores negativos en los datos
+            const hayNegativos = datosprovinciasfiltrado.some((d) => d.Valor < 0);
+            if (hayNegativos) {
+                // Si hay negativos, establecemos el mínimo de la escala Y al mínimo valor negativo
+                minimoY = d3.min(datosprovinciasfiltrado, (d) => d.Valor);
+            }
+            console.log("Mínimo: " + minimoY);
+        
+            // EJE Y
+            //---------------------------------------------------------
+            // Escala Y: Definimos una escala vertical para las provincias de esta comunidad
+            var escalaYProvincia = d3.scaleLinear()                          
+                .domain([minimoY, 
+                         d3.max(datosprovinciasfiltrado, d => d.Valor)])        // Establecemos el margen de valores usando el valor mínimo y el valor máximo
+                .range([height2, 0])                                            // Establecemos el rango de visualización entre el alto de la gráfica y 0
+             
+            // Eje Y: Definimos la visualización del Eje Y para esta comunidad
+            var ejeYProvincia = d3.axisLeft (escalaYProvincia)                  // Aplicamos la escala Y definida antes en un Eje Vertical orientado a la izquierda
+                .ticks (5)                                                      // Definimos el formato de los ticks del eje
+                .tickFormat (d3.format(".2s")) 
+            
+                         
+            // EJE X
+            //---------------------------------------------------------
+            // Escala X: Definimos una escala horizontal para las provincias de esta comunidad usando bandas para el gráfico de barras
+            var escalaXProvincia = d3.scaleBand()
+                .domain(datosprovinciasfiltrado.map(d => d.Parametro))          // Establecemos qué valores van a conformar las barras del eje X  
+                .range([0, width2])                                             // Establecemos el rango X que ocupará el gráfico de barras.
+                .round(true)                                                    // Indicamos que se redondeará
+                .paddingInner(0.1);                                             // Establecemos el padding entre barras     
+
+            // Eje X: Definimos la visualización del Eje X para esta comunidad
+            var ejeXProvincia = d3.axisBottom()                                 // Aplicamos la escala X definida antes en un Eje Horizontal orientado hacia abajo
+                  .scale(escalaXProvincia);    
+            
+            // Ajustamos la ubicación vertical del eje X para acomodarlo a la ubicación del 0 si hay negativos
+            gEjeX.attr('transform', `translate(${margin2.left}, ${escalaYProvincia(0)})`)
+        
+            console.log("Escala Y para 0: " + escalaYProvincia(0));
+        
+            // Pintado de EJES
+            //---------------------------------------------------------
+            // De cada vez deben pintarse los ejes nuevamente        
+            gEjeX.call(ejeXProvincia)
+            gEjeY.call(ejeYProvincia)
+            
+            
+            // Pintado de BARRAS CON VALORES NEGATIVOS
+            //---------------------------------------------------------
+            svgProvincias.selectAll(".bar")                                                         // Creamos las barras
+                .remove()                                                                           // Limpiamos los datos previos
+                .exit()
+                .data(datosprovinciasfiltrado)                                                      // Tomamos los datos a representar
+                .enter().append("rect")                                                             // Indicamos que usaremos barras para la representación
+                .attr("fill", (d) => {                                                              // Rellenamos de forma dinámica en función del color
+                  if (d.Valor >= 0) {
+                    return "green";
+                  } else {
+                    return "red";
+                  }
+                })
+                .attr('class', 'bar')                                                               // Asignamos la clase bar
+                .attr("x", d => escalaXProvincia(d.Parametro))                                      // X de la barra (top left)
+                .attr("y", (d) => d.Valor < 0 ? escalaYProvincia(0) : escalaYProvincia(d.Valor))    // Y de la barra (top left). Si es negativo será el 0. Si positivo, escala normal.
+                .attr("width", escalaXProvincia.bandwidth())                                        // Ancho de la barra
+                .attr("height", d => Math.abs(escalaYProvincia(0) - escalaYProvincia(d.Valor)));    // Alto de la barra. Se determina con la distancia al 0 para negativo y positivo.
+               
+  
+    
+        /*
+        
+        
             // DATOS: Cargamos los datos correspondientes a las provincias asociadas a la comunidad seleccionada        
             var datosprovinciasfiltrado = datosprovincias.filter(x => x.Comunidad === pfiltro)                     
+            
+            // NOTA: con este código se puede simplificar la gestión de "repintar". Basta descomentar y meter la definición del SVG y los ejes dentro de la función.
+            // Borramos la gráfica anterior
+            //const svg = d3.select("div#grafico2");
+            //svg.selectAll("*").remove();
             
             // EJE Y
             //---------------------------------------------------------
             // Escala Y: Definimos una escala vertical para las provincias de esta comunidad
             var escalaYProvincia = d3.scaleLinear()                          
-                .domain([0, d3.max(datosprovinciasfiltrado, d => d.Valor)])     // Establecemos el margen de valores de los datos de las provincias 
-                .range([height2, 0]);                                           // Establecemos el rango de visualización entre el alto de la gráfica y 0
+                .domain([d3.min(datosprovinciasfiltrado, d => d.Valor), 
+                         d3.max(datosprovinciasfiltrado, d => d.Valor)])        // Establecemos el margen de valores teniendo en cuenta que hay negativos 
+                .range([height2, 0])                                            // Establecemos el rango de visualización entre el alto de la gráfica y 0
              
             // Eje Y: Definimos la visualización del Eje Y para esta comunidad
             var ejeYProvincia = d3.axisLeft (escalaYProvincia)                  // Aplicamos la escala Y definida antes en un Eje Vertical orientado a la izquierda
@@ -190,11 +287,28 @@ Promise.all([d3.json ("https://raw.githubusercontent.com/ivangp21/herramientas/m
             // De cada vez deben pintarse los ejes nuevamente        
             gEjeX.call(ejeXProvincia)
             gEjeY.call(ejeYProvincia)
-            
         
-            // Pintado de BARRAS
+        
+            // Pintado de BARRAS CON VALORES NEGATIVOS
             //---------------------------------------------------------
-  
+            // Prerrequisito: Ya está ajustado el domain en Y para que tome el valor negativo en consideración (min)
+            // Teoría: Con rect supuestamente se especifica la esquina superior izquierda con x e y y luego las dimensiones con widht y height.
+            //      Al tener valores negativos habría que hacer referencia al "0". 
+            // Referencia: https://stackoverflow.com/questions/71333334/d3-bar-chart-negative-values-not-showing-up
+            svgProvincias
+                  .selectAll(".bar")
+                  .data(datosprovinciasfiltrado)
+                  .enter()
+                  .append('rect')
+                  .attr('class', 'bar')
+                  //.attr("class", function(d) { return d.Valor < 0 ? "bar negative" : "bar positive"; })       // Determinamos si es positiva o negativa
+                  .attr('fill', staticColor)
+                  .attr('x', d => escalaXProvincia(d.Parametro))
+                  .attr('width', escalaXProvincia.bandwidth())
+                  //.attr('y',  d => Math.min(escalaYProvincia(d.Valor), escalaYProvincia(0)))                    // Ajustamos la posición
+                  //.attr('height', d => Math.sign(d.Valor) * (escalaYProvincia(0) - escalaYProvincia(d.Valor)))
+                  .attr("y", d => escalaYProvincia(Math.max(0, d.Valor)))
+                  .attr("height", d => Math.abs(escalaYProvincia(d.Valor) - escalaYProvincia(0)));
         
         
         
@@ -209,9 +323,10 @@ Promise.all([d3.json ("https://raw.githubusercontent.com/ivangp21/herramientas/m
              // .style('text-anchor', 'end')
               //.text('Provincia') 
            
-        
+       
             // Pintado de DATOS
-            //---------------------------------------------------------
+            //---------------------------------------------------------        
+        /*
             svgProvincias
               .selectAll(".bar")                 
               .attr('fill', staticColor)
@@ -247,6 +362,7 @@ Promise.all([d3.json ("https://raw.githubusercontent.com/ivangp21/herramientas/m
                   .enter()
                   .append('rect')
                   .attr('class', 'bar')
+                  //.attr("class", function(d) { return d < 0 ? "bar negative" : "bar positive"; })
                   .attr('fill', staticColor)
                   .attr('x', d => escalaXProvincia(d.Parametro))
                   .attr('width', escalaXProvincia.bandwidth())
@@ -269,6 +385,6 @@ Promise.all([d3.json ("https://raw.githubusercontent.com/ivangp21/herramientas/m
                     tooltip.html(``).style('visibility', 'hidden');
                     d3.select(this).transition().attr('fill', staticColor);
                   });   
-                  
+            */   
         }
 }); 
